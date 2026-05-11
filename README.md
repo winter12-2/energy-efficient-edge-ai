@@ -49,3 +49,11 @@ The initial implementation records:
 - Estimated communication bytes for federated-learning style updates
 
 The communication estimate is intentionally simple. It gives a first comparison point for baseline, pruned, and quantized models before adding a full ns-3 or federated learning simulator.
+
+## Experiment Results
+
+The baseline MNIST model achieved an accuracy of 97.74%.
+
+After applying TensorFlow Lite quantization, the model size was reduced from 1312.23 KB to 113.64 KB, resulting in approximately 73.53% size reduction.
+
+These results show that optimization techniques such as quantization can significantly reduce model size while still maintaining strong performance. This makes the optimized model more suitable for edge devices with limited memory and computational power.
