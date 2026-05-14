@@ -11,6 +11,16 @@ def build_mnist_loaders(
     batch_size: int,
     num_workers: int = 0,
 ) -> tuple[DataLoader, DataLoader]:
+
+    # load the MNIST dataset and train and test data loaders
+    # the data loader sends images to the model in batches insted of all at once
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be greater than 0")
+    if num_workers < 0:
+        raise ValueError("num_workers cannot be negative")
+    
+    # converting images to tensors and normalize
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -18,9 +28,22 @@ def build_mnist_loaders(
         ]
     )
     root = Path(data_dir)
-    train_dataset = datasets.MNIST(root=root, train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST(root=root, train=False, download=True, transform=transform)
 
+    # download and load the training and testing datasets
+    train_dataset = datasets.MNIST(
+        root=root, 
+        train=True, 
+        download=True, 
+        transform=transform
+    )
+    test_dataset = datasets.MNIST(
+        root=root, 
+        train=False, 
+        download=True, 
+        transform=transform
+    )
+
+    # traing data is shuffled so that the model sees the data in random order
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -28,6 +51,8 @@ def build_mnist_loaders(
         num_workers=num_workers,
         pin_memory=False,
     )
+
+    # testing data is not shuffled because we only use it for evaluation
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
