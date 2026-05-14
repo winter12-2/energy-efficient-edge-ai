@@ -17,6 +17,10 @@ from edge_ai_efficiency.model import count_parameters
 
 @dataclass
 class ExperimentResult:
+
+    # stores the results for 1 model version. 
+    # Each row represents baseline mdeol, or prunded model or quantized model.
+
     name: str
     accuracy: float
     train_seconds: float
@@ -27,6 +31,7 @@ class ExperimentResult:
     communication_mb: float
     checkpoint_path: str
 
+    #convert the result to dict for saving in csv/json format
     def to_dict(self) -> dict[str, float | int | str]:
         return asdict(self)
 
@@ -39,12 +44,24 @@ def train_one_model(
     learning_rate: float,
     limit_train_batches: int | None = None,
 ) -> float:
+    
+    # train one model and return the training time
+
+    if epochs <= 0:
+        raise ValueError("epochs must be greater than 0")
+    if learning_rate <= 0:
+        raise ValueError("learning_rate must be greater than 0")
+    if limit_train_batches is not None and limit_train_batches <= 0:
+        raise ValueError("limit_train_batches must be greater than 0")
+    
     model.to(device)
     model.train()
+
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     started = time.perf_counter()
+
     for _epoch in range(epochs):
         for batch_index, (features, labels) in enumerate(train_loader):
             if limit_train_batches is not None and batch_index >= limit_train_batches:
@@ -59,6 +76,8 @@ def train_one_model(
             optimizer.step()
     return time.perf_counter() - started
 
+# test the model and return accuracy and evaluation time. 
+# torch.no_grad() because we are only testing here
 
 @torch.no_grad()
 def evaluate(
@@ -67,8 +86,13 @@ def evaluate(
     device: torch.device,
     limit_test_batches: int | None = None,
 ) -> tuple[float, float]:
+    
+    if limit_test_batches is not None and limit_test_batches <= 0:
+        raise ValueError("limit_test_batches must be greater than 0")
+    
     model.to(device)
     model.eval()
+
     correct = 0
     total = 0
 
@@ -87,9 +111,16 @@ def evaluate(
     return accuracy, elapsed
 
 
+# Here we apply pruning to remove less important weights from the model. 
+# this helps lower the no. of active parameters which can lower the communication cost
 def apply_global_pruning(model: nn.Module, amount: float) -> nn.Module:
+
+    if amount < 0 or amount > 1:
+        raise ValueError("prune amount must be between 0 and 1")
+
     pruned_model = copy.deepcopy(model)
     parameters_to_prune = []
+
     for module in pruned_model.modules():
         if isinstance(module, (nn.Conv2d, nn.Linear)):
             parameters_to_prune.append((module, "weight"))
@@ -99,19 +130,24 @@ def apply_global_pruning(model: nn.Module, amount: float) -> nn.Module:
         pruning_method=prune.L1Unstructured,
         amount=amount,
     )
+
+    # removing pruning wrappers so that the model can be saved normally
     for module, parameter_name in parameters_to_prune:
         prune.remove(module, parameter_name)
     return pruned_model
 
 
+# apply dynamic INT8 quantization. this helps reduce model size for edge devices.
 def apply_dynamic_quantization(model: nn.Module) -> nn.Module:
     cpu_model = copy.deepcopy(model).to("cpu")
     cpu_model.eval()
+
     return torch.quantization.quantize_dynamic(
         cpu_model,
         {nn.Linear},
         dtype=torch.qint8,
     )
+
 
 
 def build_result(
@@ -125,16 +161,20 @@ def build_result(
     rounds: int,
     bytes_per_parameter: int,
 ) -> ExperimentResult:
+    
     parameter_count = count_parameters(model)
     nonzero_parameter_count = count_parameters(model, only_nonzero=True)
+
     communication = estimate_model_update_cost(
         parameter_count=nonzero_parameter_count,
         clients=clients,
         rounds=rounds,
         bytes_per_parameter=bytes_per_parameter,
     )
+
     checkpoint_path = output_dir / "checkpoints" / f"{name}.pt"
     checkpoint_size = save_checkpoint(model, checkpoint_path)
+    
     return ExperimentResult(
         name=name,
         accuracy=accuracy,
